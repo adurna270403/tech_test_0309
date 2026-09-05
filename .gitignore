@@ -1,0 +1,10 @@
+__pycache__/
+.pytest_cache/
+*.pyc
+
+# raw upstream downloads; the frozen snapshot in data/snapshot/ is what ships
+data/cache/
+
+# private one-shot data fetcher, not part of the submission
+scripts/fetch_data.py
+.claude/
