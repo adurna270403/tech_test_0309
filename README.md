@@ -12,7 +12,7 @@ liquid names for the cross-sectional sleeves; the thin 2017-2018 market is
 reported separately as a robustness check. The report explains the return miss
 via the no-leverage constraint — the book leans on the 100% gross cap nearly all
 the time, and sweeping the cap diagnostically shows both targets clear together
-only at ~125% gross. `output/REPORT.md` / `output/REPORT.pdf`
+only at ~125% gross. `output/REPORT.pdf`
 (regenerate with `make all`).
 
 ## Run everything
