@@ -1,8 +1,0 @@
-variant,avg_mo,pos,pos_is,pos_oos,sharpe,maxdd,verdict
-"baseline (crash 3.0sd/50%, dd-throttle 3.0/0.25, vol-target 20%)",0.0141,0.761,0.764,0.756,1.26,-0.215,shipped
-crypto vol valve linear thr=0.8 floor=0 (btc_trend+wd_mom),0.0143,0.692,0.681,,1.32,-0.142,max drawdown cut -7pp but hit rate 69%: fails spec
-crypto inverse-vol valve (all thresholds),0.0141,0.761,0.764,0.756,1.26,-0.215,no-op: sleeves already inverse-vol sized
-wd_mom gated by BTC>EMA200,0.0139,0.735,0.736,0.733,1.23,-0.219,gate fires mostly in good months; costs hit rate
-crash guard 2.0sd->50% (budgets kept),0.0136,0.752,0.764,0.733,1.28,-0.193,DD -2.2pp but flips Oct-2025 (0.0000 month) -> OOS pos below 75
-defensive budget 0.16 / 0.20,0.0134,0.744,0.736,0.756,1.29,-0.205,"Sharpe up, hit rate down"
-"drawdown throttle tighter (scale 2.0-1.0, floor 0.5)",0.014,0.752,0.764,0.733,1.27,-0.208,marginal; same hit-rate cost
