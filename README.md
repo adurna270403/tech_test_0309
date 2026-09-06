@@ -29,7 +29,6 @@ python -m pytest tests/ -q     # no-lookahead & engine-correctness tests
 python run_backtest.py         # reads frozen snapshot, runs backtest, writes output/
 python run_validation.py       # sensitivity grids, DSR, correlation, sleeve frontier
 python run_protocol.py         # three-epoch selection protocol, walk-forward, bootstrap
-python report.py               # writes output/REPORT.pdf (+ charts, markdown copy)
 ```
 
 Data: frozen daily OHLCV, a quarterly EPS panel, crypto perp prices (funding-
