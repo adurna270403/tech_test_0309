@@ -15,7 +15,3 @@ output/*
 !output/monthly_table.csv
 !output/monthly_grid.csv
 !output/*.png
-
-# deleted on GitHub by hand — do not re-upload
-report.py
-output/REPORT.md

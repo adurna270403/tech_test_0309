@@ -16,6 +16,18 @@ IS_START = "2019-01-01"
 IS_END = "2022-12-31"
 OOS_START = "2023-01-01"
 
+# --- three-epoch protocol (2025-09 review) -----------------------------------
+# Every grid/search in the history of this project reported the full sample
+# through 2026-09, so no later window is untouched; the least-contaminated
+# epochs are declared here and the selection protocol re-run on them:
+#   RESEARCH    2019-01..2022-12  sleeve construction, parameter choice
+#   VALIDATION  2023-01..2024-12  sleeve budget selection (the only fitting on
+#                                 this epoch: choosing among 20 budget cells)
+#   HOLDOUT     2025-01..present  scored once, after budgets are frozen; no
+#                                 strategy/parameter/weight may be chosen on it
+VALIDATION_END = "2024-12-31"
+HOLDOUT_START = "2025-01-01"
+
 EQ_ROBUSTNESS_START = "2010-01-01"
 EQ_ROBUSTNESS_END = "2016-12-31"
 
