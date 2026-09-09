@@ -19,7 +19,7 @@ from data.loaders import (CRYPTO_SYMBOLS, CRYPTO_XS_SYMBOLS,
                           DEFENSIVE_TICKERS, EQUITY_TICKERS, close_frame,
                           data_fingerprint, load_all, load_eps, load_funding)
 from signals.btc_trend import btc_trend_follow
-from signals.carry import carry_sleeve_exposure
+from signals.carry import carry_sleeve_exposure, route_through_perp, xs_carry_exposure
 from signals.defensive import defensive_basket
 from signals.equity_core import equity_core
 from signals.wd_mom import wd_momentum
@@ -35,13 +35,32 @@ def carry_overlay(close: pd.DataFrame) -> pd.DataFrame:
     return expo.mul(config.CARRY_GROSS, axis=0)
 
 
+def xs_carry_overlay(close: pd.DataFrame) -> pd.DataFrame:
+    """Cross-sectional funding carry: delta-neutral spot/short-perp pairs on
+    the top-k coins by trailing funding. Fixed notional (XS_CARRY_GROSS pair
+    gross, counted once under the netted convention), added after risk
+    normalisation like the two-pair carry overlay."""
+    if config.XS_CARRY_GROSS <= 0:
+        return pd.DataFrame(0.0, index=close.index, columns=close.columns)
+    funding = load_funding()
+    if funding.empty:
+        return pd.DataFrame(0.0, index=close.index, columns=close.columns)
+    return xs_carry_exposure(
+        close, funding=funding, k=config.XS_CARRY_K,
+        lookback=config.XS_CARRY_LOOKBACK, rebalance=config.XS_CARRY_REBALANCE,
+        gross=config.XS_CARRY_GROSS,
+    )
+
+
 def build_sleeves(close: pd.DataFrame, eps: pd.DataFrame,
                   data_volumes: dict[str, pd.Series] | None = None) -> dict[str, pd.DataFrame]:
     """Sleeves, each on a different driver:
       equity_core  long US equity basket gated by the S&P 500 trend
       btc_trend    crypto long/short on the BTC EMA+RSI regime
       defensive    trend-gated gold / duration / dollar
-      wd_mom       crypto same-weekday cross-sectional momentum (Long 2020)
+      wd_mom       crypto same-weekday cross-sectional momentum (Long 2020),
+                   held through the perp whenever that side collects funding
+      xs_carry     delta-neutral spot/short-perp funding capture, top-k coins
       wq_earnings  cross-sectional earnings tilt (rejected; off by default)
 
     Only sleeves in config.SLEEVE_BUDGETS are built: an unbudgeted sleeve would
@@ -86,6 +105,10 @@ def build_sleeves(close: pd.DataFrame, eps: pd.DataFrame,
             volume=pd.DataFrame(
                 {s: data_volumes[s] for s in CRYPTO_XS_SYMBOLS}),
             n_liquid=config.WD_N_LIQUID,
+            formation_weekdays=config.WD_FORMATION_WEEKDAYS,
+            abs_momentum=config.WD_ABS_MOMENTUM,
+            gate_symbol=config.WD_GATE_SYMBOL,
+            gate_ma=config.WD_GATE_MA,
         ),
         "wq_earnings": wq_earnings_tilt(
             close,
@@ -97,7 +120,26 @@ def build_sleeves(close: pd.DataFrame, eps: pd.DataFrame,
             hysteresis=config.WQ_HYSTERESIS,
         ),
     }
-    return {n: e for n, e in all_sleeves.items() if n in config.SLEEVE_BUDGETS}
+    sleeves = {n: e for n, e in all_sleeves.items() if n in config.SLEEVE_BUDGETS}
+    if getattr(config, "BTC_CONSENSUS_GATE", False) and "btc_trend" in sleeves:
+        # second consensus gate: crypto trend also requires BTC above its MA
+        btc_on = (close["BTCUSDT"] > close["BTCUSDT"].rolling(config.BTC_GATE_MA).mean())
+        btc_on = btc_on.reindex(close.index).fillna(False)
+        bt = sleeves["btc_trend"]
+        for c in bt.columns:
+            bt[c] = bt[c] * btc_on.astype(float)
+    if config.WD_ROUTE_PERP and "wd_mom" in sleeves:
+        funding = load_funding()
+        if not funding.empty:
+            wd = sleeves["wd_mom"]
+            # routing moves positions between spot and perp columns: both must
+            # exist in the frame before the swap
+            for c in [f"{s}-PERP" for s in wd.columns
+                      if s in funding.columns and (f"{s}-PERP") in close.columns]:
+                wd[c] = 0.0
+            sleeves["wd_mom"] = route_through_perp(
+                wd, funding, lookback=config.WD_ROUTE_LOOKBACK)
+    return sleeves
 
 
 def monthly_table(ret_net: pd.Series, ret_gross: pd.Series,
@@ -168,7 +210,7 @@ def main():
 
     sleeves = build_sleeves(close, eps,
                             data_volumes={s: d["volume"] for s, d in data.items()})
-    overlays = {"carry": carry_overlay(close)}
+    overlays = {"carry": carry_overlay(close), "xs_carry": xs_carry_overlay(close)}
     rf = tbill_rf_series(close.index) if config.USE_TBILL_CASH_YIELD else None
     bt = Backtester(data, rf=rf)
     res = bt.run(sleeves, overlays)

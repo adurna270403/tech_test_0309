@@ -139,20 +139,37 @@ def load_defensive(tickers: list[str] | None = None) -> dict[str, pd.DataFrame]:
 
 
 def load_perps() -> dict[str, pd.DataFrame]:
-    """Funding-adjusted perpetual-swap panels (see scripts/fetch_funding.py).
-    Return on the panel = spot return - daily funding, so a short perp leg
-    earns the funding stream in the standard backtester P&L."""
-    return {f"{s}-PERP": _read_symbol(f"{s}-PERP") for s in CRYPTO_SYMBOLS
-            if (SNAP / f"{s}-PERP.parquet").exists()}
+    """Funding-adjusted perpetual-swap panels (see scripts/fetch_funding.py and
+    scripts/build_perp_panels.py). Return on the panel = spot return - daily
+    funding, so a short perp leg earns the funding stream in the standard
+    backtester P&L."""
+    perps = {f"{s}-PERP": _read_symbol(f"{s}-PERP") for s in CRYPTO_SYMBOLS
+             if (SNAP / f"{s}-PERP.parquet").exists()}
+    archive_path = SNAP / "funding_archive.parquet"
+    if archive_path.exists():
+        for s in pd.read_parquet(archive_path).columns:
+            p = f"{s}-PERP"
+            if p not in perps and (SNAP / f"{p}.parquet").exists():
+                perps[p] = _read_symbol(p)
+    return perps
 
 
 def load_funding() -> pd.DataFrame:
+    """Daily summed funding rate per symbol. The archive (full history, monthly
+    zips) supersedes the API-scraped funding_daily.parquet where both exist."""
+    df = pd.DataFrame()
+    archive = SNAP / "funding_archive.parquet"
+    if archive.exists():
+        df = pd.read_parquet(archive)
+        df.index = pd.to_datetime(df.index)
     path = SNAP / "funding_daily.parquet"
-    if not path.exists():
-        return pd.DataFrame()
-    df = pd.read_parquet(path)
-    df.index = pd.to_datetime(df.index)
-    return df.sort_index().astype(float)
+    if path.exists():
+        old = pd.read_parquet(path)
+        old.index = pd.to_datetime(old.index)
+        for c in old.columns:
+            if c not in df.columns or df[c].notna().sum() < old[c].notna().sum():
+                df[c] = old[c]
+    return df.sort_index().astype(float) if not df.empty else df
 
 
 def load_tbill() -> pd.DataFrame:

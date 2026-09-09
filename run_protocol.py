@@ -36,6 +36,11 @@ BUDGET_GRID = [(dw, cw) for dw in [0.10, 0.12, 0.15, 0.18]
                for cw in [0.20, 0.25, 0.30, 0.35, 0.40]]
 
 
+def cell_budgets(dw, cw, ww=0.04):
+    return {"equity_core": max(0.05, 1.0 - dw - cw - ww),
+            "btc_trend": cw, "defensive": dw, "wd_mom": ww}
+
+
 def load_data():
     from data.loaders import close_frame, load_all, load_eps
     data = load_all()
@@ -71,8 +76,7 @@ def select_budgets(data, sleeves) -> tuple[dict, pd.DataFrame]:
     with no access to 2025+ data."""
     rows = []
     for dw, cw in BUDGET_GRID:
-        b = {"equity_core": max(0.05, 1.0 - dw - cw),
-             "btc_trend": cw, "defensive": dw}
+        b = cell_budgets(dw, cw)
         r = run_budget(data, sleeves, b)
         trv = slice_win(r, config.START, config.VALIDATION_END)
         hold = slice_win(r, config.HOLDOUT_START, "2100-01-01")
@@ -91,8 +95,7 @@ def select_budgets(data, sleeves) -> tuple[dict, pd.DataFrame]:
     # selection rule, fixed a priori: max hit rate; tie-break on avg month
     df["selected"] = (df.trv_pct_pos == df.trv_pct_pos.max())
     sel = df[df.selected].sort_values("trv_avg_monthly", ascending=False).iloc[0]
-    chosen = {"equity_core": max(0.05, 1.0 - sel.defensive_budget - sel.crypto_budget),
-              "btc_trend": sel.crypto_budget, "defensive": sel.defensive_budget}
+    chosen = cell_budgets(sel.defensive_budget, sel.crypto_budget)
     df.to_csv(OUT / "protocol_budget_selection.csv", index=False)
     return chosen, df
 
@@ -118,18 +121,15 @@ def walk_forward(data, sleeves, train_years: int = 4, test_years: int = 1):
     rows = []
     years = list(range(2023, 2027))  # test blocks 2023, 2024, 2025, 2026YTD
     full_ret = {  # precompute each cell's full daily returns once
-        (dw, cw): run_budget(
-            data, sleeves,
-            {"equity_core": max(0.05, 1.0 - dw - cw),
-             "btc_trend": cw, "defensive": dw})
-        for dw, cw in BUDGET_GRID}
+        cell: run_budget(data, sleeves, cell_budgets(*cell))
+        for cell in BUDGET_GRID}
     for test_year in years:
         lo, hi = f"{test_year}-01-01", f"{test_year}-12-31"
         rows_wf = []
-        for (dw, cw), r in full_ret.items():
+        for cell, r in full_ret.items():
             train = slice_win(r, config.START, f"{test_year - 1}-12-31")
             m = monthly_returns(train)
-            rows_wf.append({"dw": dw, "cw": cw,
+            rows_wf.append({"dw": cell[0], "cw": cell[1],
                             "train_pct_pos": (m > 0).mean(),
                             "train_avg": m.mean()})
         tr = pd.DataFrame(rows_wf)
@@ -151,6 +151,7 @@ def walk_forward(data, sleeves, train_years: int = 4, test_years: int = 1):
     wf = pd.DataFrame(rows)
     wf.to_csv(OUT / "walkforward.csv", index=False)
     return wf, full_ret
+
 
 
 # --- 4. stationary block bootstrap ---------------------------------------------
@@ -227,6 +228,14 @@ def honest_trial_count() -> int:
     n += len(pd.read_csv(OUT / "monthly_take_profit_grid.csv", index_col=0)) \
         if (OUT / "monthly_take_profit_grid.csv").exists() else 0
     n += 20  # protocol re-selection grid (this run)
+    # every research grid cell scored on R+V during the 2026-09 push
+    research = OUT / "research"
+    if research.exists():
+        for p in sorted(research.glob("*.csv")):
+            try:
+                n += sum(1 for _ in open(p)) - 1
+            except OSError:
+                pass
     return max(n, 1)
 
 

@@ -64,3 +64,38 @@ def route_through_perp(expo: pd.DataFrame, funding: pd.DataFrame,
         out[c] = out[c] - move
         out[perp] = out.get(perp, 0.0) + move
     return out.fillna(0.0)
+
+
+def xs_carry_exposure(close: pd.DataFrame, funding: pd.DataFrame,
+                      k: int = 8, lookback: int = 63, rebalance: int = 7,
+                      gross: float = 1.0) -> pd.DataFrame:
+    """Cross-sectional cash-and-carry: long spot + short perp the k coins with
+    the highest trailing funding sum (positive pairs only). Delta-neutral, so
+    the exposure is built directly on the close panel -- the spot leg and the
+    short perp leg each get half of the pair's allocation, and the perp panel's
+    funding-adjusted prices turn the short leg into the funding stream in the
+    engine's standard P&L. Weight on each selected pair is gross/k (a fully-on
+    portfolio is `gross` pair-gross, counted once under the netted convention).
+
+    Rankings use only funding through t; positions change on rebalance days."""
+    f = funding.reindex(close.index).ffill()
+    trail = f.rolling(lookback, min_periods=lookback).sum()
+    rank = trail.rank(axis=1, ascending=False)
+    sel = (rank <= k) & trail.notna() & (trail > 0)
+    w = sel.astype(float)
+    w = w.div(w.sum(axis=1).replace(0, np.nan), axis=0).fillna(0.0)
+    days = pd.Series(np.arange(len(w)), index=w.index)
+    reb_mask = (days % rebalance == 0)
+    w = w.where(reb_mask, np.nan).ffill().fillna(0.0)
+    # causal: weights computed from funding through t are tradable from t+1
+    w = w.shift(1).fillna(0.0)
+
+    out = pd.DataFrame(0.0, index=close.index, columns=close.columns)
+    for c in w.columns:
+        spot, perp = c, f"{c}-PERP"
+        if spot not in out.columns or perp not in out.columns:
+            continue
+        pair_w = w[c] * gross
+        out[spot] = out[spot] + pair_w * 0.5
+        out[perp] = out[perp] - pair_w * 0.5
+    return out

@@ -1,6 +1,6 @@
 PY ?= python
 
-all: test backtest validate protocol report
+all: test backtest validate protocol
 
 test:
 	$(PY) -m pytest tests/ -q
@@ -13,6 +13,3 @@ validate:
 
 protocol:
 	$(PY) run_protocol.py
-
-report:
-	$(PY) report.py

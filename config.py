@@ -43,14 +43,21 @@ BTC_RSI_SHORT_LO = 15.0
 BTC_RSI_SHORT_HI = 50.0
 BTC_SLEEVE_VOL_TARGET = 0.15
 BTC_HYSTERESIS = 0.06
+# Second consensus gate on the crypto trend sleeve: the sleeve's EMA/RSI regime
+# must ALSO agree with BTC closing above its BTC_GATE_MA-day average. Selected
+# on R+V: lifts Sharpe at every budget cell tried and pushes the book past the
+# 75% positive-month bar (54/72 on R+V at 2.17%/mo).
+BTC_CONSENSUS_GATE = True
+BTC_GATE_MA = 50
 
 # --- equity core: long basket gated by the SPY 200-day trend -----------------
 EQ_INDEX = "SPY"
-EQ_INDEX_LOOKBACK = 200
+EQ_INDEX_LOOKBACK = 150
 EQ_VOL_LOOKBACK = 60
 EQ_ON_WEIGHT = 1.00         # gross when the index is in an uptrend
-EQ_OFF_WEIGHT = 0.05        # residual gross when it is not; the rest sits in
-                            # T-bills earning the cash yield
+EQ_OFF_WEIGHT = 0.10        # residual gross when it is not; the rest sits in
+                            # T-bills earning the cash yield. Raised from 0.05
+                            # on R+V: fewer whipsaw months for the equity core.
 EQ_HYSTERESIS = 0.01
 
 # --- WorldQuant-inspired cross-sectional earnings tilt (not in shipped book) -
@@ -69,17 +76,50 @@ WQ_HYSTERESIS = 0.01
 # cost of the higher crypto budget, so btc_trend sits at the frontier's
 # return-maximising point rather than the hit-rate corner.
 SLEEVE_BUDGETS = {
-    "equity_core": 0.48,
-    "btc_trend": 0.26,
-    "defensive": 0.13,
-    "wd_mom": 0.04,
+    "equity_core": 0.45,
+    "btc_trend": 0.324,
+    "defensive": 0.10,
+    "wd_mom": 0.126,
 }
+# Peak cell of the mapped frontier (2026-09-09): 2.08%/mo @ 73.6% pos on R+V
+# (53/72 -- one positive month short of the 75% bar), Sharpe ~1.44, MaxDD
+# -16.1%. Selected on R+V only; see output/research/*_rv.csv for the ~180
+# cells searched.
 
 # --- crypto same-weekday cross-sectional momentum (Long 2020) ----------------
 WD_K_WEEKS = 3
 WD_N_LONG = 4
 WD_ADV_WINDOW = 20
 WD_N_LIQUID = 12
+# Formation weekdays (0=Mon..4=Fri). (4,) is the shipped single Friday cohort.
+# The full week (0..4) raises yield/gross ~8x vs the displaced blend but costs
+# ~1 hit-rate point per ~0.2%/mo of extra average; measured across the full
+# 3D budget grid no multi-cohort composition reaches 75% pos on R+V, so the
+# single cohort ships (see output/research/fullweek_defensive_grid.csv).
+WD_FORMATION_WEEKDAYS = (4,)
+# Eligibility: a coin's own k-week return must be positive (absolute momentum)
+# and the whole sleeve stands down when BTC closes below its WD_GATE_MA-day
+# average (crypto-wide regime guard). Both selected on R+V only.
+WD_ABS_MOMENTUM = True
+WD_GATE_SYMBOL = "BTCUSDT"
+WD_GATE_MA = 50
+# Instrument choice for the wd_mom longs: hold the perp instead of spot while
+# that side collects funding (perp long receives funding when funding is
+# negative). Same notional, same gross, no new risk budget -- the same causal
+# trailing-funding rule the carry sleeve uses (CARRY_LOOKBACK).
+WD_ROUTE_PERP = True
+WD_ROUTE_LOOKBACK = 21  # = CARRY_LOOKBACK; the same causal funding-sign rule
+
+# --- cross-sectional funding carry (delta-neutral spot/short-perp) -----------
+# Long spot + short perp on the top XS_CARRY_K coins ranked by trailing
+# XS_CARRY_LOOKBACK funding sum (only pairs with positive trailing carry),
+# rebalanced every XS_CARRY_REBALANCE days. Sized by XS_CARRY_GROSS, applied
+# before the engine's gross cap: a fully-on unit portfolio is 1.0 pair gross,
+# counted once under NET_DELTA_NEUTRAL_GROSS (both legs matched).
+XS_CARRY_K = 8
+XS_CARRY_LOOKBACK = 63
+XS_CARRY_REBALANCE = 7
+XS_CARRY_GROSS = 0.0
 
 # Return-maximising alternative: lower hit rate, higher average month. Kept so
 # the other corner of the frontier is reproducible via config swap.
